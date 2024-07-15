@@ -29,7 +29,6 @@ mod tests {
         arch::{shutdown, ArchReg, ArchTCB},
         fault::{lookup_fault_t, seL4_Fault_t},
         println,
-        utils::convert_to_mut_type_ref,
     };
     use sel4_task::{tcb_t, thread_state_t, ThreadState};
     global_asm!(include_str!("entry.asm"));
