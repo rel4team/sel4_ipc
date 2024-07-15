@@ -6,7 +6,7 @@ use sel4_task::{
     possible_switch_to, rescheduleRequired, set_thread_state, tcb_queue_t, tcb_t, ThreadState,
 };
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 /// The state of a notification
 pub enum NtfnState {
     Idle = 0,
