@@ -1,10 +1,10 @@
 [build]
-target = "riscv64imac-unknown-none-elf"
+target = "aarch64-unknown-none-softfloat"
 
 [target.'cfg(target_os = "none")']
-runner = "./test.sh"
+runner = "./script/aarch64/aarch64_test.sh"
 rustflags = [
-    "-Clink-arg=-Tlinker-riscv64.ld",
+    "-Clink-arg=-Tsel4_ipc/linker.ld",
     "-Cforce-frame-pointers=yes",
     '--cfg=board="qemu"',
 ]

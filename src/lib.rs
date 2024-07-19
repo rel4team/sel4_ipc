@@ -16,24 +16,25 @@
 mod endpoint;
 mod notification;
 mod transfer;
+mod trap;
 
 pub use endpoint::*;
 pub use notification::*;
 pub use transfer::*;
+pub use trap::*;
 
 #[cfg(test)]
 mod tests {
     use core::arch::global_asm;
-    use riscv::register::{stvec, utvec::TrapMode};
+    // use riscv::register::{stvec, utvec::TrapMode};
     use sel4_common::{
         arch::{shutdown, ArchReg, ArchTCB},
         fault::{lookup_fault_t, seL4_Fault_t},
         println,
     };
+    use super::*;
     use sel4_task::{tcb_t, thread_state_t, ThreadState};
     global_asm!(include_str!("entry.asm"));
-
-    use super::*;
 
     fn new_mock_tcb_with_state(state: ThreadState) -> tcb_t {
         tcb_t {
@@ -656,18 +657,13 @@ mod tests {
 
     #[no_mangle]
     pub fn call_test_main() {
-        extern "C" {
-            fn trap_entry();
-        }
-        unsafe {
-            stvec::write(trap_entry as usize, TrapMode::Direct);
-        }
+        trap::init();
         crate::test_main();
     }
     #[no_mangle]
     pub fn c_handle_syscall() {
         unsafe {
-            core::arch::asm!("sret");
+            core::arch::asm!("eret");
         }
     }
 }

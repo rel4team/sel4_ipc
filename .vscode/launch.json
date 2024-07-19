@@ -1,0 +1,24 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        // {
+        //     "name": "(Windows) Launch",
+        //     "type": "cppvsdbg",
+        //     "request": "launch",
+        //     "program": "${workspaceRoot}/target/debug/foo.exe",
+        //     "args": [],
+        //     "stopAtEntry": false,
+        //     "cwd": "${workspaceRoot}",
+        //     "environment": [],
+        //     "externalConsole": true
+        // },
+        {
+            "name": "(OSX) Launch",
+            "type": "lldb",
+            "request": "launch",
+            "program": "/Users/jackhu/src_code/rust/mi-dev/rel4_kernel/target/aarch64-unknown-none-softfloat/debug/deps/sel4_ipc-483d76eb63a4dcf9",
+            "args": [],
+            "cwd": "${workspaceRoot}",
+        }
+    ]
+}
