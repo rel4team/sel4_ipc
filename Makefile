@@ -19,4 +19,4 @@ test: test_build
 
 .PHONY: clean test
 clean:
-	rm -rf .cargo src/entry.asm *.log
+	rm -rf .cargo src/entry.asm *.log linker.ld

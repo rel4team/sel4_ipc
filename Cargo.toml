@@ -8,7 +8,11 @@ sel4_common = { git = "https://github.com/rel4team/sel4_common.git", branch = "m
 sel4_cspace = { git = "https://github.com/rel4team/sel4_cspace.git", branch = "mi_dev" }
 sel4_vspace = { git = "https://github.com/rel4team/sel4_vspace.git", branch = "mi_dev" }
 sel4_task = { git = "https://github.com/rel4team/sel4_task.git", branch = "mi_dev" }
-# riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu = "9.3"
 tock-registers = "0.8"
 

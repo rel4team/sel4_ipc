@@ -1,10 +1,12 @@
-[build]
-target = "aarch64-unknown-none-softfloat"
 
-[target.'cfg(target_os = "none")']
-runner = "./script/aarch64/aarch64_test.sh"
-rustflags = [
-    "-Clink-arg=-Tsel4_ipc/linker.ld",
-    "-Cforce-frame-pointers=yes",
-    '--cfg=board="qemu"',
-]
+    [build]
+    target = "aarch64-unknown-none-softfloat"
+
+    [target.'cfg(target_os = "none")']
+    runner = "./script/aarch64/aarch64_test.sh"
+    rustflags = [
+        "-Clink-arg=-Tsel4_ipc/linker.ld",
+        "-Cforce-frame-pointers=yes",
+        '--cfg=board="qemu"',
+    ]
+    

@@ -16,24 +16,30 @@
 mod endpoint;
 mod notification;
 mod transfer;
+#[cfg(target_arch = "aarch64")]
 mod trap;
 
 pub use endpoint::*;
 pub use notification::*;
 pub use transfer::*;
+#[cfg(target_arch = "aarch64")]
 pub use trap::*;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use core::arch::asm;
     use core::arch::global_asm;
-    // use riscv::register::{stvec, utvec::TrapMode};
+    #[cfg(target_arch = "riscv64")]
+    use riscv::register::{stvec, utvec::TrapMode};
     use sel4_common::{
         arch::{shutdown, ArchReg, ArchTCB},
         fault::{lookup_fault_t, seL4_Fault_t},
         println,
     };
-    use super::*;
+
     use sel4_task::{tcb_t, thread_state_t, ThreadState};
+
     global_asm!(include_str!("entry.asm"));
 
     fn new_mock_tcb_with_state(state: ThreadState) -> tcb_t {
@@ -56,6 +62,7 @@ mod tests {
         }
     }
 
+    #[no_mangle]
     pub fn test_runner(tests: &[&dyn Fn()]) {
         println!("Running {} tests\n", tests.len());
         for test in tests {
@@ -648,7 +655,6 @@ mod tests {
     }
 
     // TODO: do_transfer relevant tests supplyment
-
     #[panic_handler]
     fn panic(info: &core::panic::PanicInfo) -> ! {
         println!("{}", info);
@@ -657,13 +663,29 @@ mod tests {
 
     #[no_mangle]
     pub fn call_test_main() {
+        #[cfg(target_arch = "riscv64")]
+        {
+            extern "C" {
+                fn trap_entry();
+            }
+            unsafe {
+                stvec::write(trap_entry as usize, TrapMode::Direct);
+            }
+        }
+        #[cfg(target_arch = "aarch64")]
         trap::init();
         crate::test_main();
     }
     #[no_mangle]
     pub fn c_handle_syscall() {
+        #[cfg(target_arch = "riscv64")]
         unsafe {
-            core::arch::asm!("eret");
+            asm!("sret");
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            asm!("eret");
         }
     }
 }

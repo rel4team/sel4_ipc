@@ -1,7 +1,6 @@
 .section .text.entry
     .global _start
     .global trap_entry
-    .global c_handle_syscall
 _start:
     mrs x19, mpidr_el1         // 读取 MPIDR_EL1 寄存器的值到 x19
     and x19, x19, #0xff         // 从 x19 中提取 CPU ID
@@ -12,10 +11,11 @@ _start:
     add x8, x8, 4096 * 16      // 将 boot_stack_top 的地址加上 4096 * 16，即栈的大小，存储到 x8
 
     mov sp, x8                 // 初始化栈指针 sp
-    bl call_test_main          // 调用函数 call_test_main
+    # bl switch_to_el1      // 调用函数 switch_to_el1
 
-trap_entry:
-    b c_handle_syscall        // 无条件跳转到 c_handle_syscall
+    mov x0, x19               // 将 CPU ID 存储到 x0
+    ldr x8, =call_test_main    // 将 call_test_main 的地址加载到 x8
+    blr x8                    // 调用 call_test_main
 
     .section .bss.stack
     .global boot_stack_lower_bound

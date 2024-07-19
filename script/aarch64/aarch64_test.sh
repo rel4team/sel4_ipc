@@ -8,4 +8,5 @@ qemu-system-aarch64 \
     -cpu cortex-a57 \
     -machine virt \
     -kernel $1.bin \
-    -nographic -smp 1
+    -nographic -smp 1 \
+    -D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors

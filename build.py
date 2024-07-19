@@ -17,6 +17,7 @@ try:
     print(f'Arch: {arch}')
     runner = f'./script/{arch}/{arch}_test.sh'
     entry = f'./script/{arch}/{arch}_entry.asm'
+    linker = f'./script/{arch}/linker.ld'
 except subprocess.CalledProcessError as e:
     print(f"Error reading Makefile variable: {e}")
 
@@ -39,3 +40,4 @@ with open('.cargo/config.toml', 'w') as f:
     f.write(config)
 
 shutil.copyfile(entry, 'src/entry.asm')
+shutil.copyfile(linker, 'linker.ld')
