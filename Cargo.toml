@@ -17,3 +17,6 @@ aarch64-cpu = "9.3"
 tock-registers = "0.8"
 
 [features]
+unit-test = [
+    "sel4_common/unit-test",
+]

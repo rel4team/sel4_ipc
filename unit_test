@@ -4,4 +4,4 @@ make clean
 make test ARCH=riscv64 > riscv_test.log 2>&1
 make test ARCH=aarch64 > aarch64_test.log 2>&1
 
-code riscv_test.log
+code riscv_test.log && code aarch64_test.log
