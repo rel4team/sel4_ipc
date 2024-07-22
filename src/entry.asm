@@ -11,7 +11,7 @@ _start:
     add x8, x8, 4096 * 16      // 将 boot_stack_top 的地址加上 4096 * 16，即栈的大小，存储到 x8
 
     mov sp, x8                 // 初始化栈指针 sp
-    # bl switch_to_el1      // 调用函数 switch_to_el1
+    bl switch_to_el1      // 调用函数 switch_to_el1
 
     mov x0, x19               // 将 CPU ID 存储到 x0
     ldr x8, =call_test_main    // 将 call_test_main 的地址加载到 x8

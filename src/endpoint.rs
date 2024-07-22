@@ -1,6 +1,6 @@
 use crate::transfer::Transfer;
 use sel4_common::arch::ArchReg;
-use sel4_common::plus_define_bitfield;
+use sel4_common::{plus_define_bitfield, println};
 use sel4_common::utils::{convert_to_mut_type_ref, convert_to_option_mut_type_ref};
 use sel4_task::{
     possible_switch_to, rescheduleRequired, schedule_tcb, set_thread_state, tcb_queue_t, tcb_t,

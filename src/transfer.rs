@@ -66,6 +66,7 @@ impl Transfer for tcb_t {
                 let ep = convert_to_mut_type_ref::<endpoint_t>(state.get_blocking_object());
                 assert_ne!(ep.get_state(), EPState::Idle);
                 ep.cancel_ipc(self);
+                assert_eq!(ep.get_queue_head(), 0);
             }
             ThreadState::ThreadStateBlockedOnNotification => {
                 let ntfn = convert_to_mut_type_ref::<notification_t>(state.get_blocking_object());

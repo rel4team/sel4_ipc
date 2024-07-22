@@ -532,9 +532,10 @@ mod tests {
 
             mock_tcb.cancel_ipc();
             assert_eq!(ep.get_state(), EPState::Idle);
-            assert_eq!(ep.get_queue_head(), 0);
-            assert_eq!(ep.get_queue_tail(), 0);
             assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+            let queue = ep.get_queue();
+            assert_eq!(queue.tail, 0);
+            assert_eq!(queue.head, 0);
         }
         // notification
         {

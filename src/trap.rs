@@ -17,6 +17,7 @@ pub fn init() {
     extern "C" {
         fn exception_vector_base();
     }
+    SPSR_EL1.set((1 << 6) | (1 << 8));
     VBAR_EL1.set(exception_vector_base as _);
 }
 
