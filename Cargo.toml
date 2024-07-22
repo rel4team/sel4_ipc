@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sel4_common = { git = "https://github.com/rel4team/sel4_common.git", branch = "mi_dev" }
+sel4_common = { git = "https://github.com/rel4team/sel4_common.git", branch = "feature/test-check" }
 sel4_cspace = { git = "https://github.com/rel4team/sel4_cspace.git", branch = "mi_dev" }
 sel4_vspace = { git = "https://github.com/rel4team/sel4_vspace.git", branch = "mi_dev" }
 sel4_task = { git = "https://github.com/rel4team/sel4_task.git", branch = "mi_dev" }
