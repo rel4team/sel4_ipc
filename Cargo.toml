@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 sel4_common = { git = "https://github.com/rel4team/sel4_common.git", branch = "feature/test-check" }
-sel4_cspace = { git = "https://github.com/rel4team/sel4_cspace.git", branch = "mi_dev" }
-sel4_vspace = { git = "https://github.com/rel4team/sel4_vspace.git", branch = "mi_dev" }
-sel4_task = { git = "https://github.com/rel4team/sel4_task.git", branch = "mi_dev" }
+sel4_cspace = { git = "https://github.com/rel4team/sel4_cspace.git", branch = "feature/test-check" }
+sel4_vspace = { git = "https://github.com/rel4team/sel4_vspace.git", branch = "feature/test-check" }
+sel4_task = { git = "https://github.com/rel4team/sel4_task.git", branch = "feature/test-check" }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
@@ -17,6 +17,4 @@ aarch64-cpu = "9.3"
 tock-registers = "0.8"
 
 [features]
-unit-test = [
-    "sel4_common/unit-test",
-]
+unit-test = ["sel4_common/unit-test"]

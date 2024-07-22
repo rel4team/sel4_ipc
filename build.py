@@ -32,7 +32,7 @@ with open('.cargo/config.toml', 'w') as f:
     [target.'cfg(target_os = "none")']
     runner = "{runner}"
     rustflags = [
-        "-Clink-arg=-Tsel4_ipc/linker.ld",
+        "-Clink-arg=-Tlinker.ld",
         "-Cforce-frame-pointers=yes",
         '--cfg=board="qemu"',
     ]
