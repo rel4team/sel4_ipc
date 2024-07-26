@@ -45,12 +45,33 @@ plus_define_bitfield! {
 impl notification_t {
     #[inline]
     /// Get the state of the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// ntfn.set_state(NtfnState::Waiting as _);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// ntfn.set_state(NtfnState::Active as _);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Active);
+    /// ```
     pub fn get_state(&self) -> NtfnState {
         unsafe { core::mem::transmute::<u8, NtfnState>(self.get_usize_state() as u8) }
     }
 
     #[inline]
     /// Get the tcb queue of the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    /// let head = 0x8000;
+    /// let tail = 0x9000;
+    /// ntfn.set_queue_head(head);
+    /// ntfn.set_queue_tail(tail);
+    /// assert_eq!(ntfn.get_queue_head(), head);
+    /// assert_eq!(ntfn.get_queue_tail(), tail);
+    /// ```
     pub fn get_queue(&self) -> tcb_queue_t {
         tcb_queue_t {
             head: self.get_queue_head(),
@@ -60,6 +81,18 @@ impl notification_t {
 
     #[inline]
     /// Set the tcb queue to the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    /// let head = 0x8000;
+    /// let tail = 0x9000;
+    /// ntfn.set_queue_head(head);
+    /// ntfn.set_queue_tail(tail);
+    /// assert_eq!(ntfn.get_queue_head(), head);
+    /// assert_eq!(ntfn.get_queue_tail(), tail);
+    /// ```
     pub fn set_queue(&mut self, queue: &tcb_queue_t) {
         self.set_queue_head(queue.head);
         self.set_queue_tail(queue.tail);
@@ -69,6 +102,15 @@ impl notification_t {
     /// Set the notification to active
     /// # Arguments
     /// * `badge` - The badge to set
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// let badge = 0x1000;
+    /// ntfn.active(badge);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Active);
+    /// assert_eq!(ntfn.get_msg_identifier(), badge);
+    /// ```
     pub fn active(&mut self, badge: usize) {
         self.set_state(NtfnState::Active as usize);
         self.set_msg_identifier(badge);
@@ -78,6 +120,22 @@ impl notification_t {
     /// Cancel the signal of the tcb in the notification
     /// # Arguments
     /// * `tcb` - The tcb to cancel
+    /// # Examples
+    /// ```
+    /// // notification_send_and_cancel_signal_queue_should_not_be_empty_test
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.receive_signal(mock_tcb, true); // receive
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcb.get_ptr());
+    /// assert_eq!(ntfn.get_queue_tail(), mock_tcb.get_ptr());
+    ///
+    /// ntfn.cancel_signal(mock_tcb);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    /// ```
     pub fn cancel_signal(&mut self, tcb: &mut tcb_t) {
         let mut queue = self.get_queue();
         queue.ep_dequeue(tcb);
@@ -107,18 +165,57 @@ impl notification_t {
 
     #[inline]
     /// Bind the tcb to the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.bind_tcb(mock_tcb);
+    /// assert_eq!(ntfn.get_bound_tcb(), mock_tcb.get_ptr());
+    /// ntfn.unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    ///
+    /// ntfn.bind_tcb(mock_tcb);
+    /// ntfn.safe_unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    /// ```
     pub fn bind_tcb(&mut self, tcb: &mut tcb_t) {
         self.set_bound_tcb(tcb.get_ptr());
     }
 
     #[inline]
     /// Unbind the tcb to the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.bind_tcb(mock_tcb);
+    /// assert_eq!(ntfn.get_bound_tcb(), mock_tcb.get_ptr());
+    /// ntfn.unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    ///
+    /// ntfn.bind_tcb(mock_tcb);
+    /// ntfn.safe_unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    /// ```
     pub fn unbind_tcb(&mut self) {
         self.set_bound_tcb(0);
     }
 
     #[inline]
     /// Safely unbind the tcb to the notification
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.bind_tcb(mock_tcb);
+    /// assert_eq!(ntfn.get_bound_tcb(), mock_tcb.get_ptr());
+    /// ntfn.unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    ///
+    /// ntfn.bind_tcb(mock_tcb);
+    /// ntfn.safe_unbind_tcb();
+    /// assert_eq!(ntfn.get_bound_tcb(), 0);
+    /// ```
     pub fn safe_unbind_tcb(&mut self) {
         let tcb = self.get_bound_tcb();
         self.unbind_tcb();
@@ -140,6 +237,21 @@ impl notification_t {
     /// 3: If the notification is active, the badge is added to the message identifier.
     /// # Arguments
     /// * `badge` - The badge to send
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.receive_signal(mock_tcb, true); // receive
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcb.get_ptr());
+    /// assert_eq!(ntfn.get_queue_tail(), mock_tcb.get_ptr());
+    ///
+    /// ntfn.cancel_signal(mock_tcb);
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    /// ```
     pub fn send_signal(&mut self, badge: usize) {
         match self.get_state() {
             NtfnState::Idle => {
@@ -185,6 +297,78 @@ impl notification_t {
     /// # Arguments
     /// * `recv_thread` - The thread to receive the signal
     /// * `is_blocking` - If the signal is blocking
+    /// # Examples
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mut mock_tcbs = [
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    /// ];
+    ///
+    /// for mock_tcb in mock_tcbs.iter_mut() {
+    ///     ntfn.receive_signal(mock_tcb, true); // receive
+    /// }
+    ///
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcbs[0].get_ptr());
+    /// assert_eq!(
+    ///     ntfn.get_queue_tail(),
+    ///     mock_tcbs[mock_tcbs.len() - 1].get_ptr()
+    /// );
+    ///
+    /// ntfn.cacncel_all_signal();
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    ///
+    /// for mock_tcb in mock_tcbs.into_iter() {
+    ///     assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRestart);
+    /// }
+    /// ```
+    ///
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb1 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// let mock_tcb2 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.receive_signal(mock_tcb1, true); // receive
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcb1.get_ptr());
+    /// assert_eq!(ntfn.get_queue_tail(), mock_tcb1.get_ptr());
+    ///
+    /// ntfn.send_signal(mock_tcb2.get_ptr());
+    /// assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    /// assert_eq!(ntfn.get_queue_head(), 0);
+    /// assert_eq!(ntfn.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb1.get_state(), ThreadState::ThreadStateRunning);
+    /// assert_eq!(mock_tcb2.get_state(), ThreadState::ThreadStateRunning);
+    /// ```
+    ///
+    /// ```
+    /// let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    /// let mock_tcb1 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// let mock_tcb2 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// let mock_tcb3 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ntfn.receive_signal(mock_tcb1, true); // receive
+    /// ntfn.receive_signal(mock_tcb2, true); // receive
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcb1.get_ptr());
+    /// assert_eq!(ntfn.get_queue_tail(), mock_tcb2.get_ptr());
+    ///
+    /// ntfn.send_signal(mock_tcb3.get_ptr());
+    /// assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    /// assert_eq!(ntfn.get_queue_head(), mock_tcb2.get_ptr());
+    /// assert_eq!(ntfn.get_queue_tail(), mock_tcb2.get_ptr());
+    /// assert_eq!(mock_tcb1.get_state(), ThreadState::ThreadStateRunning);
+    /// assert_eq!(
+    ///     mock_tcb2.get_state(),
+    ///     ThreadState::ThreadStateBlockedOnNotification
+    /// );
+    /// assert_eq!(mock_tcb3.get_state(), ThreadState::ThreadStateRunning);
+    /// ```
     pub fn receive_signal(&mut self, recv_thread: &mut tcb_t, is_blocking: bool) {
         match self.get_state() {
             NtfnState::Idle | NtfnState::Waiting => {

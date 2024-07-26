@@ -33,7 +33,6 @@ plus_define_bitfield! {
 }
 
 #[cfg(target_arch = "aarch64")]
-// The structure of an endpoint, which is used to send and receive IPC
 plus_define_bitfield! {
     endpoint_t, 2, 0, 0, 0 => {
         new, 0 => {
@@ -47,18 +46,42 @@ plus_define_bitfield! {
 impl endpoint_t {
     #[inline]
     /// Get the raw pointer(usize) to the endpoint
+    /// # Return
+    /// The raw pointer to the endpoint address
     pub fn get_ptr(&self) -> pptr_t {
         self as *const Self as pptr_t
     }
 
     #[inline]
     /// Get the state of the endpoint
+    /// # Examples
+    /// ```
+    /// let head = 0x8000;
+    /// let tail = 0x9000;
+    /// let mut ep = endpoint_t::new(head, tail, EPState::Idle as usize);
+    /// assert_eq!(ep.get_state(), EPState::Idle);
+    /// ep.set_state(EPState::Send as _);
+    /// assert_eq!(ep.get_state(), EPState::Send);
+    /// ep.set_state(EPState::Recv as _);
+    /// assert_eq!(ep.get_state(), EPState::Recv);
+    /// ```
     pub fn get_state(&self) -> EPState {
         unsafe { core::mem::transmute::<u8, EPState>(self.get_usize_state() as u8) }
     }
 
     #[inline]
     /// Get the tcb queue of the queue
+    /// # Examples
+    /// ```
+    /// let head = 0x8000;
+    /// let tail = 0x9000;
+    /// let mut ep = endpoint_t::new(head, tail, EPState::Idle as usize);
+    /// assert_eq!(ep.get_queue_head(), head);
+    /// ep.set_queue_head(0x9000);
+    /// assert_eq!(ep.get_queue_head(), 0x9000);
+    /// ep.set_queue_head(0x8000);
+    /// assert_eq!(ep.get_queue_head(), 0x8000);
+    /// ```
     pub fn get_queue(&self) -> tcb_queue_t {
         tcb_queue_t {
             head: self.get_queue_head(),
@@ -68,6 +91,17 @@ impl endpoint_t {
 
     #[inline]
     /// Set the tcb queue to the queue
+    /// # Examples
+    /// ```
+    /// let head = 0x8000;
+    /// let tail = 0x9000;
+    /// let mut ep = endpoint_t::new(head, tail, EPState::Idle as usize);
+    /// assert_eq!(ep.get_queue_head(), head);
+    /// ep.set_queue_head(0x9000);
+    /// assert_eq!(ep.get_queue_head(), 0x9000);
+    /// ep.set_queue_head(0x8000);
+    /// assert_eq!(ep.get_queue_head(), 0x8000);
+    /// ```
     pub fn set_queue(&mut self, tcb_queue: &tcb_queue_t) {
         self.set_queue_head(tcb_queue.head);
         self.set_queue_tail(tcb_queue.tail);
@@ -77,6 +111,21 @@ impl endpoint_t {
     /// Cancel the IPC of the tcb in the endpoint, and set the tcb to inactive
     /// # Arguments
     /// * `tcb` - The tcb to cancel the IPC
+    /// # Examples
+    /// ```
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
+    /// assert_eq!(ep.get_state(), EPState::Send);
+    /// assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
+    /// assert_eq!(ep.get_queue_tail(), mock_tcb.get_ptr());
+    ///
+    /// ep.cancel_ipc(mock_tcb);
+    /// assert_eq!(ep.get_state(), EPState::Idle);
+    /// assert_eq!(ep.get_queue_head(), 0);
+    /// assert_eq!(ep.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    /// ```
     pub fn cancel_ipc(&mut self, tcb: &mut tcb_t) {
         let mut queue = self.get_queue();
         queue.ep_dequeue(tcb);
@@ -89,6 +138,37 @@ impl endpoint_t {
 
     #[inline]
     /// Cancel all IPC in the endpoint
+    /// # Examples
+    /// ```
+    /// let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mut mock_tcbs = [
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    ///     &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning),
+    /// ];
+    ///
+    /// for mock_tcb in mock_tcbs.iter_mut() {
+    ///     ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
+    /// }
+    /// assert_eq!(ep.get_state(), EPState::Send);
+    /// assert_eq!(ep.get_queue_head(), mock_tcbs[0].get_ptr());
+    /// assert_eq!(
+    ///     ep.get_queue_tail(),
+    ///     mock_tcbs[mock_tcbs.len() - 1].get_ptr()
+    /// );
+    ///
+    /// ep.cancel_all_ipc();
+    /// assert_eq!(ep.get_state(), EPState::Idle);
+    /// assert_eq!(ep.get_queue_head(), 0);
+    /// assert_eq!(ep.get_queue_tail(), 0);
+    ///
+    /// for mock_tcb in mock_tcbs.into_iter() {
+    ///     assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRestart);
+    /// }
+    /// ```
     pub fn cancel_all_ipc(&mut self) {
         match self.get_state() {
             EPState::Idle => {}
@@ -145,6 +225,37 @@ impl endpoint_t {
     /// * `can_grant` - If the IPC can grant
     /// * `badge` - The badge of the IPC
     /// * `can_grant_reply` - If the IPC can grant the reply
+    /// # Examples
+    /// ```
+    /// // endpoint_send_ipc_no_blocking_should_be_idle_test
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.send_ipc(mock_tcb, false, false, false, 0, false); // send
+    /// assert_eq!(ep.get_state(), EPState::Idle);
+    /// assert_eq!(ep.get_queue_head(), 0);
+    /// assert_eq!(ep.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRunning);
+    /// ```
+    /// ```
+    /// // endpoint_send_ipc_blocking_should_be_send_test
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
+    /// assert_eq!(ep.get_state(), EPState::Send);
+    /// assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
+    /// assert_eq!(ep.get_queue_tail(), mock_tcb.get_ptr());
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateBlockedOnSend);
+    /// ```
+    /// ```
+    /// // endpoint_send_ipc_no_blocking_should_be_send_test
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Send as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.send_ipc(mock_tcb, false, false, false, 0, false); // send
+    /// assert_eq!(ep.get_state(), EPState::Send);
+    /// assert_eq!(ep.get_queue_head(), 0);
+    /// assert_eq!(ep.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRunning);
+    /// ```
     pub fn send_ipc(
         &mut self,
         src_thread: &mut tcb_t,
@@ -211,6 +322,59 @@ impl endpoint_t {
     /// * `thread` - The thread to receive the IPC
     /// * `is_blocking` - If the IPC is blocking
     /// * `grant` - If the IPC can grant
+    /// # Examples
+    /// ```
+    /// // endpoint_receive_and_cancel_ipc_should_be_empty_test
+    /// let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.receive_ipc(mock_tcb, true, false); // receive
+    /// assert_eq!(ep.get_state(), EPState::Recv);
+    /// assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
+    /// assert_eq!(ep.get_queue_tail(), mock_tcb.get_ptr());
+    ///
+    /// ep.cancel_ipc(mock_tcb);
+    /// assert_eq!(ep.get_state(), EPState::Idle);
+    /// assert_eq!(ep.get_queue_head(), 0);
+    /// assert_eq!(ep.get_queue_tail(), 0);
+    /// assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    /// ```
+    ///
+    /// ```
+    /// // endpoint_receive_and_cancel_ipc_queue_should_not_be_empty_test
+    ///
+    /// let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let mock_tcb1 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// let mock_tcb2 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// ep.receive_ipc(mock_tcb1, true, false); // receive
+    /// ep.receive_ipc(mock_tcb2, true, false); // receive
+    /// assert_eq!(ep.get_state(), EPState::Recv);
+    /// assert_eq!(ep.get_queue_head(), mock_tcb1.get_ptr());
+    /// assert_eq!(ep.get_queue_tail(), mock_tcb2.get_ptr());
+    ///
+    /// ep.cancel_ipc(mock_tcb1);
+    /// assert_eq!(ep.get_state(), EPState::Recv);
+    /// assert_eq!(ep.get_queue_head(), mock_tcb2.get_ptr());
+    /// assert_eq!(ep.get_queue_tail(), mock_tcb2.get_ptr());
+    /// assert_eq!(mock_tcb1.get_state(), ThreadState::ThreadStateInactive);
+    /// assert_eq!(
+    ///     mock_tcb2.get_state(),
+    ///     ThreadState::ThreadStateBlockedOnReceive
+    /// );
+    /// ```
+    /// ```
+    /// // endpoint_send_and_receive_ipc_queue_should_be_empty_test
+    ///let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+    ///let mock_tcb1 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    ///let mock_tcb2 = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    ///ep.send_ipc(mock_tcb1, true, false, false, 0, false); // send
+    ///assert_eq!(ep.get_state(), EPState::Send);
+    ///ep.receive_ipc(mock_tcb2, true, false); // receive
+    ///assert_eq!(ep.get_state(), EPState::Idle);
+    ///assert_eq!(ep.get_queue_head(), 0);
+    ///assert_eq!(ep.get_queue_tail(), 0);
+    ///assert_eq!(mock_tcb1.get_state(), ThreadState::ThreadStateRunning);
+    ///assert_eq!(mock_tcb2.get_state(), ThreadState::ThreadStateRunning);
+    /// ```
     pub fn receive_ipc(&mut self, thread: &mut tcb_t, is_blocking: bool, grant: bool) {
         if thread.complete_signal() {
             return;

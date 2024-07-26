@@ -32,45 +32,26 @@ mod tests {
     use core::arch::global_asm;
     #[cfg(target_arch = "riscv64")]
     use riscv::register::{stvec, utvec::TrapMode};
+    use sel4_common::arch::MessageLabel;
+    use sel4_common::fault::seL4_CapFault_IP;
+    use sel4_common::message_info::seL4_MessageInfo_t;
+    use sel4_common::sel4_config::MessageID_Syscall;
+    use sel4_common::sel4_config::{seL4_MsgMaxExtraCaps, seL4_MsgMaxLength};
+    use sel4_common::structures::seL4_IPCBuffer;
     use sel4_common::{
         arch::{shutdown, ArchReg, ArchTCB},
         fault::{lookup_fault_t, seL4_Fault_t},
         println,
     };
 
+    use sel4_cspace::arch::cap_t;
+    use sel4_cspace::interface::cte_t;
+    use sel4_cspace::interface::mdb_node_t;
+    use sel4_task::tcb_queue_t;
     use sel4_task::{tcb_t, thread_state_t, ThreadState};
+    use sel4_vspace::pptr_t;
 
     global_asm!(include_str!("entry.asm"));
-
-    fn new_mock_tcb_with_state(state: ThreadState) -> tcb_t {
-        tcb_t {
-            tcbEPPrev: 0,
-            tcbEPNext: 0,
-            tcbSchedPrev: 0,
-            tcbSchedNext: 0,
-            tcbIPCBuffer: 0,
-            tcbFaultHandler: 0,
-            tcbTimeSlice: 0,
-            tcbPriority: 0,
-            tcbMCP: 0,
-            domain: 0,
-            tcbLookupFailure: lookup_fault_t::new_root_invalid(),
-            tcbFault: seL4_Fault_t::new_null_fault(),
-            tcbBoundNotification: 0,
-            tcbState: thread_state_t::state_new(0, 0, 0, 0, 0, 0, state as usize),
-            tcbArch: ArchTCB::default(),
-        }
-    }
-
-    #[no_mangle]
-    pub fn test_runner(tests: &[&dyn Fn()]) {
-        println!("Running {} tests\n", tests.len());
-        for test in tests {
-            test();
-        }
-        println!("All Test Cases(count: {}) passed!", tests.len());
-        shutdown();
-    }
 
     #[test_case]
     pub fn endpoint_create_happy_case_test() {
@@ -148,7 +129,7 @@ mod tests {
     pub fn endpoint_send_and_cancel_ipc_should_be_empty_test() {
         println!(">>>>>>>>>>>> Entering endpoint_send_and_cancel_ipc_should_be_empty_test...");
 
-        let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+        let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
         let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
         ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
         assert_eq!(ep.get_state(), EPState::Send);
@@ -162,6 +143,51 @@ mod tests {
         assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
 
         println!("Test endpoint_send_and_cancel_ipc_should_be_empty_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn endpoint_send_ipc_no_blocking_should_be_idle_test() {
+        println!(">>>>>>>>>>>> Entering endpoint_send_ipc_no_blocking_should_be_idle_test...");
+
+        let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        ep.send_ipc(mock_tcb, false, false, false, 0, false); // send
+        assert_eq!(ep.get_state(), EPState::Idle);
+        assert_eq!(ep.get_queue_head(), 0);
+        assert_eq!(ep.get_queue_tail(), 0);
+        assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRunning);
+
+        println!("Test endpoint_send_ipc_no_blocking_should_be_idle_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn endpoint_send_ipc_blocking_should_be_send_test() {
+        println!(">>>>>>>>>>>> Entering endpoint_send_ipc_blocking_should_be_send_test...");
+
+        let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
+        assert_eq!(ep.get_state(), EPState::Send);
+        assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
+        assert_eq!(ep.get_queue_tail(), mock_tcb.get_ptr());
+        assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateBlockedOnSend);
+
+        println!("Test endpoint_send_ipc_blocking_should_be_send_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn endpoint_send_ipc_no_blocking_should_be_send_test() {
+        println!(">>>>>>>>>>>> Entering endpoint_send_ipc_no_blocking_should_be_send_test...");
+
+        let ep = &mut endpoint_t::new(0, 0, EPState::Send as usize);
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        ep.send_ipc(mock_tcb, false, false, false, 0, false); // send
+        assert_eq!(ep.get_state(), EPState::Send);
+        assert_eq!(ep.get_queue_head(), 0);
+        assert_eq!(ep.get_queue_tail(), 0);
+        assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateRunning);
+
+        println!("Test endpoint_send_ipc_no_blocking_should_be_send_test passed!<<<<<<<<<<<<\n");
     }
 
     #[test_case]
@@ -409,7 +435,7 @@ mod tests {
     pub fn finaliseCap() {}
 
     #[test_case]
-    pub fn endpoint_send_and_cancel_signal_queue_should_not_be_empty_test() {
+    pub fn notification_send_and_cancel_signal_queue_should_not_be_empty_test() {
         println!(">>>>>>>>>>>> Entering endpoint_send_and_cancel_signal_queue_should_not_be_empty_test...");
 
         let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
@@ -523,7 +549,18 @@ mod tests {
         let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
         // endpoint
         {
-            let mut ep = endpoint_t::new(0, 0, EPState::Idle as usize);
+            let tmp = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+            let mut valid_addr = tmp.get_ptr();
+            if (valid_addr & 0xf) != 0 {
+                valid_addr = valid_addr >> 4 << 4;
+            }
+            let ep = unsafe { &mut *(valid_addr as *mut endpoint_t) };
+            ep.set_queue(&tcb_queue_t{
+                head: 0,
+                tail: 0,
+            });
+            ep.set_state(EPState_Idle as usize);
+
             ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
             assert_eq!(ep.get_state(), EPState::Send);
             assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
@@ -539,7 +576,13 @@ mod tests {
         }
         // notification
         {
-            let mut ntfn = notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+            let tmp = &mut notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+            let mut valid_addr = tmp.get_ptr();
+            if (valid_addr & 0xf) != 0 {
+                valid_addr = valid_addr >> 4 << 4;
+            }
+            let ntfn = unsafe { &mut *(valid_addr as *mut notification_t) };
+
             ntfn.receive_signal(mock_tcb, true); // receive
             assert_eq!(ntfn.get_state(), NtfnState::Waiting);
             assert_eq!(ntfn.get_queue_head(), mock_tcb.get_ptr());
@@ -635,33 +678,262 @@ mod tests {
     pub fn transfer_set_fault_mrs_UnknownSyscall_test() {
         println!(">>>>>>>>>>>> Entering transfer_set_fault_mrs_UnknownSyscall_test...");
 
-        let mut mock_tcb = new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
         let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
 
         let mock_fault = seL4_Fault_t::new_unknown_syscall_fault(0x1000);
+        let mock_fault_ip = 0x2000;
+        mock_tcb.tcbFault = mock_fault;
+
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultIP, mock_fault_ip);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 0), 0x8008);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 1), 0x9009);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 2), 0x80080);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 3), 0x90090);
+
+        mock_tcb.set_fault_mrs(mock_receiver);
+
+        let offset = 0;
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
+            0x8008
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 1)),
+            0x9009
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 2)),
+            0x80080
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 3)),
+            0x90090
+        );
+
+        println!("Test transfer_set_fault_mrs_UnknownSyscall_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn transfer_set_transfer_caps_with_buf_should_immediately_return_when_ipc_buffer_is_none_test(
+    ) {
+        println!(">>>>>>>>>>>> Entering transfer_set_transfer_caps_with_buf_should_immediately_return_when_ipc_buffer_is_none_test...");
+
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+        let info =
+            &mut seL4_MessageInfo_t::new(MessageLabel::CNodeCancelBadgedSends as usize, 6, 3, 0);
+        assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+        assert_eq!(info.get_extra_caps(), 3);
+        assert_eq!(info.get_caps_unwrapped(), 6);
+        let cur_extra_caps: [pptr_t; seL4_MsgMaxExtraCaps] = [0; seL4_MsgMaxExtraCaps];
+        mock_tcb.set_transfer_caps_with_buf(Some(ep), info, &cur_extra_caps, None);
+        assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+        assert_eq!(info.get_extra_caps(), 0);
+        assert_eq!(info.get_caps_unwrapped(), 0);
+
+        println!("Test transfer_set_transfer_caps_with_buf_should_immediately_return_when_ipc_buffer_is_none_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn transfer_set_transfer_caps_with_buf_endpoint_cap_test() {
+        println!(">>>>>>>>>>>> Entering transfer_set_transfer_caps_with_buf_should__test...");
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+        let info =
+            &mut seL4_MessageInfo_t::new(MessageLabel::CNodeCancelBadgedSends as usize, 6, 3, 0);
+        let mut ipc_buffer = seL4_IPCBuffer {
+            tag: 0,
+            msg: [0; seL4_MsgMaxLength],
+            userData: 0,
+            caps_or_badges: [0; seL4_MsgMaxExtraCaps],
+            receiveCNode: 0,
+            receiveIndex: 0,
+            receiveDepth: 0,
+        };
+        assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+        assert_eq!(info.get_extra_caps(), 3);
+        assert_eq!(info.get_caps_unwrapped(), 6);
+
+        let badge = 0x1000;
+        let mut cur_extra_caps: [pptr_t; seL4_MsgMaxExtraCaps] = [0; seL4_MsgMaxExtraCaps];
+        let cte = cte_t {
+            cap: cap_t::new_endpoint_cap(badge, 0, 0, 0, 0, ep.get_ptr()),
+            cteMDBNode: mdb_node_t::new(0, 0, 0, 0),
+        };
+        cur_extra_caps[0] = cte.get_ptr() as pptr_t;
+
+        mock_tcb.set_transfer_caps_with_buf(Some(ep), info, &cur_extra_caps, Some(&mut ipc_buffer));
+        assert_eq!(ipc_buffer.caps_or_badges[0], badge);
+        assert_eq!(ipc_buffer.caps_or_badges[1], 0);
+        assert_eq!(info.get_caps_unwrapped(), 1);
+        assert_eq!(info.get_extra_caps(), 1);
+
+        println!("Test transfer_set_transfer_caps_with_buf_should__test passed!<<<<<<<<<<<<\n");
+    }
+
+    // TODO: test transfer_set_transfer_caps_with_buf_non_notification_cap_test
+
+    #[test_case]
+    pub fn transfer_do_fault_transfer_CapFault_test() {
+        println!(">>>>>>>>>>>> Entering transfer_do_fault_transfer_CapFault_test...");
+
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let mock_fault = seL4_Fault_t::new_cap_fault(0x1000, 0);
         let mock_fault_ip = 0x2000;
         mock_tcb.tcbFault = mock_fault;
         mock_tcb
             .tcbArch
             .set_register(ArchReg::FaultIP, mock_fault_ip);
         mock_tcb.set_fault_mrs(mock_receiver);
+        let badge = 3;
+        mock_tcb.do_fault_transfer(mock_receiver, badge);
+
+        let offset = seL4_CapFault_IP;
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
+            0x2000
+        );
+
+        assert_eq!(mock_receiver.tcbArch.get_register(ArchReg::Badge), badge);
+
+        println!("Test transfer_do_fault_transfer_CapFault_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn transfer_do_fault_transfer_UnknownSyscall_test() {
+        println!(">>>>>>>>>>>> Entering transfer_do_fault_transfer_UnknownSyscall_test...");
+
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let mock_fault = seL4_Fault_t::new_unknown_syscall_fault(0x1000);
+        let mock_fault_ip = 0x2000;
+        mock_tcb.tcbFault = mock_fault;
+
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultIP, mock_fault_ip);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 0), 0x8008);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 1), 0x9009);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 2), 0x80080);
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultMessage(MessageID_Syscall, 3), 0x90090);
+
+        let badge = 3;
+        mock_tcb.do_fault_transfer(mock_receiver, badge);
+
+        let offset = 0;
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
+            0x8008
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 1)),
+            0x9009
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 2)),
+            0x80080
+        );
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset + 3)),
+            0x90090
+        );
+        assert_eq!(mock_receiver.tcbArch.get_register(ArchReg::Badge), badge);
+
+        println!("Test transfer_do_fault_transfer_UnknownSyscall_test passed!<<<<<<<<<<<<\n");
+    }
+
+    #[test_case]
+    pub fn transfer_do_fault_transfer_UserException_test() {
+        println!(">>>>>>>>>>>> Entering transfer_do_fault_transfer_UserException_test...");
+
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let mock_fault = seL4_Fault_t::new_user_exeception(0x1000, 0);
+        let mock_fault_ip = 0x2000;
+        mock_tcb.tcbFault = mock_fault;
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultIP, mock_fault_ip);
+        let badge = 3;
+        mock_tcb.do_fault_transfer(mock_receiver, badge);
 
         let offset = 0;
         assert_eq!(
             mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
             0x2000
         );
+        assert_eq!(mock_receiver.tcbArch.get_register(ArchReg::Badge), badge);
 
-        println!("Test transfer_set_fault_mrs_UnknownSyscall_test passed!<<<<<<<<<<<<\n");
+        println!("Test transfer_do_fault_transfer_UserException_test passed!<<<<<<<<<<<<\n");
     }
 
-    // TODO: do_transfer relevant tests supplyment
+    #[test_case]
+    pub fn transfer_do_fault_transfer_VMFault_test() {
+        println!(">>>>>>>>>>>> Entering transfer_do_fault_transfer_VMFault_test...");
+
+        let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+        let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+        let mock_fault = seL4_Fault_t::new_vm_fault(0x1000, 0, 0);
+        let mock_fault_ip = 0x2000;
+        mock_tcb.tcbFault = mock_fault;
+        mock_tcb
+            .tcbArch
+            .set_register(ArchReg::FaultIP, mock_fault_ip);
+        let badge = 3;
+        mock_tcb.do_fault_transfer(mock_receiver, badge);
+
+        let offset = 0;
+        assert_eq!(
+            mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
+            0x2000
+        );
+        assert_eq!(mock_receiver.tcbArch.get_register(ArchReg::Badge), badge);
+
+        println!("Test transfer_do_fault_transfer_VMFault_test passed!<<<<<<<<<<<<\n");
+    }
+
     #[panic_handler]
     fn panic(info: &core::panic::PanicInfo) -> ! {
         println!("{}", info);
         shutdown()
     }
 
+    #[no_mangle]
+    pub fn test_runner(tests: &[&dyn Fn()]) {
+        println!("Running {} tests\n", tests.len());
+        for test in tests {
+            test();
+        }
+        println!("All Test Cases(count: {}) passed!", tests.len());
+        shutdown();
+    }
+    
     #[no_mangle]
     pub fn call_test_main() {
         #[cfg(target_arch = "riscv64")]
@@ -687,6 +959,26 @@ mod tests {
         #[cfg(target_arch = "aarch64")]
         unsafe {
             asm!("eret");
+        }
+    }
+
+    fn new_mock_tcb_with_state(state: ThreadState) -> tcb_t {
+        tcb_t {
+            tcbEPPrev: 0,
+            tcbEPNext: 0,
+            tcbSchedPrev: 0,
+            tcbSchedNext: 0,
+            tcbIPCBuffer: 0,
+            tcbFaultHandler: 0,
+            tcbTimeSlice: 0,
+            tcbPriority: 0,
+            tcbMCP: 0,
+            domain: 0,
+            tcbLookupFailure: lookup_fault_t::new_root_invalid(),
+            tcbFault: seL4_Fault_t::new_null_fault(),
+            tcbBoundNotification: 0,
+            tcbState: thread_state_t::state_new(0, 0, 0, 0, 0, 0, state as usize),
+            tcbArch: ArchTCB::default(),
         }
     }
 }

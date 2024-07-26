@@ -7,6 +7,7 @@ use sel4_common::arch::ArchReg;
 use sel4_common::arch::{n_exceptionMessage, n_syscallMessage};
 use sel4_common::fault::*;
 use sel4_common::message_info::*;
+use sel4_common::println;
 use sel4_common::sel4_config::*;
 use sel4_common::structures::*;
 use sel4_common::utils::*;
@@ -16,8 +17,111 @@ use sel4_vspace::pptr_t;
 
 /// The trait for IPC transfer, please see doc.md for more details
 pub trait Transfer {
+    /// Cancel the IPC of thread
+    /// # Example
+    /// ```
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// // endpoint
+    /// {
+    ///     let tmp = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    ///     let mut valid_addr = tmp.get_ptr();
+    ///     if (valid_addr & 0xf) != 0 {
+    ///         valid_addr = valid_addr >> 4 << 4;
+    ///     }
+    ///     let ep = unsafe { &mut *(valid_addr as *mut endpoint_t) };
+
+    ///     ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
+    ///     assert_eq!(ep.get_state(), EPState::Send);
+    ///     assert_eq!(ep.get_queue_head(), mock_tcb.get_ptr());
+    ///     assert_eq!(ep.get_queue_tail(), mock_tcb.get_ptr());
+    ///     assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateBlockedOnSend);
+
+    ///     mock_tcb.cancel_ipc();
+    ///     assert_eq!(ep.get_state(), EPState::Idle);
+    ///     assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    ///     let queue = ep.get_queue();
+    ///     assert_eq!(queue.tail, 0);
+    ///     assert_eq!(queue.head, 0);
+    /// }
+    /// // notification
+    /// {
+    ///     let tmp = &mut notification_t::new(0, 0, 0, 0, NtfnState::Idle as usize);
+    ///     let mut valid_addr = tmp.get_ptr();
+    ///     if (valid_addr & 0xf) != 0 {
+    ///         valid_addr = valid_addr >> 4 << 4;
+    ///     }
+    ///     let ntfn = unsafe { &mut *(valid_addr as *mut notification_t) };
+
+    ///     ntfn.receive_signal(mock_tcb, true); // receive
+    ///     assert_eq!(ntfn.get_state(), NtfnState::Waiting);
+    ///     assert_eq!(ntfn.get_queue_head(), mock_tcb.get_ptr());
+    ///     assert_eq!(ntfn.get_queue_tail(), mock_tcb.get_ptr());
+    ///     assert_eq!(
+    ///         mock_tcb.get_state(),
+    ///         ThreadState::ThreadStateBlockedOnNotification
+    ///     );
+
+    ///     mock_tcb.cancel_ipc();
+    ///     assert_eq!(ntfn.get_state(), NtfnState::Idle);
+    ///     assert_eq!(ntfn.get_queue_head(), 0);
+    ///     assert_eq!(ntfn.get_queue_tail(), 0);
+    ///     assert_eq!(mock_tcb.get_state(), ThreadState::ThreadStateInactive);
+    /// }
+    /// ```
     fn cancel_ipc(&mut self);
 
+    /// # Examples
+    /// ```
+    /// // transfer_set_transfer_caps_with_buf_should_immediately_return_when_ipc_buffer_is_none_test
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let info =
+    ///     &mut seL4_MessageInfo_t::new(MessageLabel::CNodeCancelBadgedSends as usize, 6, 3, 0);
+    /// assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+    /// assert_eq!(info.get_extra_caps(), 3);
+    /// assert_eq!(info.get_caps_unwrapped(), 6);
+    /// let cur_extra_caps: [pptr_t; seL4_MsgMaxExtraCaps] = [0; seL4_MsgMaxExtraCaps];
+    /// mock_tcb.set_transfer_caps_with_buf(Some(ep), info, &cur_extra_caps, None);
+    /// assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+    /// assert_eq!(info.get_extra_caps(), 0);
+    /// assert_eq!(info.get_caps_unwrapped(), 0);
+    /// ```
+    ///
+    /// ```
+    /// // transfer_set_transfer_caps_with_buf_endpoint_cap_test
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let info =
+    ///     &mut seL4_MessageInfo_t::new(MessageLabel::CNodeCancelBadgedSends as usize, 6, 3, 0);
+    /// let mut ipc_buffer = seL4_IPCBuffer {
+    ///     tag: 0,
+    ///     msg: [0; seL4_MsgMaxLength],
+    ///     userData: 0,
+    ///     caps_or_badges: [0; seL4_MsgMaxExtraCaps],
+    ///     receiveCNode: 0,
+    ///     receiveIndex: 0,
+    ///     receiveDepth: 0,
+    /// };
+    /// assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+    /// assert_eq!(info.get_extra_caps(), 3);
+    /// assert_eq!(info.get_caps_unwrapped(), 6);
+    ///
+    /// let badge = 0x1000;
+    /// let mut cur_extra_caps: [pptr_t; seL4_MsgMaxExtraCaps] = [0; seL4_MsgMaxExtraCaps];
+    /// let cte = cte_t {
+    ///     cap: cap_t::new_endpoint_cap(badge, 0, 0, 0, 0, ep.get_ptr()),
+    ///     cteMDBNode: mdb_node_t::new(0, 0, 0, 0),
+    /// };
+    /// cur_extra_caps[0] = cte.get_ptr() as pptr_t;
+    ///
+    /// mock_tcb.set_transfer_caps_with_buf(Some(ep), info, &cur_extra_caps, Some(&mut ipc_buffer));
+    /// assert_eq!(ipc_buffer.caps_or_badges[0], badge);
+    /// assert_eq!(ipc_buffer.caps_or_badges[1], 0);
+    /// assert_eq!(info.get_caps_unwrapped(), 1);
+    /// assert_eq!(info.get_extra_caps(), 1);
+    /// ```
     fn set_transfer_caps(
         &mut self,
         endpoint: Option<&endpoint_t>,
@@ -25,6 +129,24 @@ pub trait Transfer {
         current_extra_caps: &[pptr_t; seL4_MsgMaxExtraCaps],
     );
 
+    /// # Examples
+    ///
+    /// ```
+    /// // transfer_set_transfer_caps_with_buf_should_immediately_return_when_ipc_buffer_is_none_test
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+
+    /// let ep = &mut endpoint_t::new(0, 0, EPState::Idle as usize);
+    /// let info =
+    ///     &mut seL4_MessageInfo_t::new(MessageLabel::CNodeCancelBadgedSends as usize, 6, 3, 0);
+    /// assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+    /// assert_eq!(info.get_extra_caps(), 3);
+    /// assert_eq!(info.get_caps_unwrapped(), 6);
+    /// let cur_extra_caps: [pptr_t; seL4_MsgMaxExtraCaps] = [0; seL4_MsgMaxExtraCaps];
+    /// mock_tcb.set_transfer_caps_with_buf(Some(ep), info, &cur_extra_caps, None);
+    /// assert_eq!(info.get_label(), MessageLabel::CNodeCancelBadgedSends);
+    /// assert_eq!(info.get_extra_caps(), 0);
+    /// assert_eq!(info.get_caps_unwrapped(), 0);
+    /// ```
     fn set_transfer_caps_with_buf(
         &mut self,
         endpoint: Option<&endpoint_t>,
@@ -33,6 +155,29 @@ pub trait Transfer {
         ipc_buffer: Option<&mut seL4_IPCBuffer>,
     );
 
+    /// # Examples
+    /// ```
+    /// let mock_tcb = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    /// let mock_receiver = &mut new_mock_tcb_with_state(ThreadState::ThreadStateRunning);
+    ///
+    /// let mock_fault = seL4_Fault_t::new_cap_fault(0x1000, 0);
+    /// let mock_fault_ip = 0x2000;
+    /// mock_tcb.tcbFault = mock_fault;
+    /// mock_tcb
+    ///     .tcbArch
+    ///     .set_register(ArchReg::FaultIP, mock_fault_ip);
+    /// mock_tcb.set_fault_mrs(mock_receiver);
+    /// let badge = 3;
+    /// mock_tcb.do_fault_transfer(mock_receiver, badge);
+    ///
+    /// let offset = seL4_CapFault_IP;
+    /// assert_eq!(
+    ///     mock_receiver.tcbArch.get_register(ArchReg::Msg(offset)),
+    ///     0x2000
+    /// );
+    ///
+    /// assert_eq!(mock_receiver.tcbArch.get_register(ArchReg::Badge), badge);
+    /// ```
     fn do_fault_transfer(&self, receiver: &mut tcb_t, badge: usize);
 
     fn do_normal_transfer(
@@ -66,7 +211,6 @@ impl Transfer for tcb_t {
                 let ep = convert_to_mut_type_ref::<endpoint_t>(state.get_blocking_object());
                 assert_ne!(ep.get_state(), EPState::Idle);
                 ep.cancel_ipc(self);
-                assert_eq!(ep.get_queue_head(), 0);
             }
             ThreadState::ThreadStateBlockedOnNotification => {
                 let ntfn = convert_to_mut_type_ref::<notification_t>(state.get_blocking_object());
