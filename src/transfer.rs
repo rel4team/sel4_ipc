@@ -7,15 +7,16 @@ use sel4_common::arch::ArchReg;
 use sel4_common::arch::{n_exceptionMessage, n_syscallMessage};
 use sel4_common::fault::*;
 use sel4_common::message_info::*;
-use sel4_common::println;
 use sel4_common::sel4_config::*;
 use sel4_common::structures::*;
 use sel4_common::utils::*;
 use sel4_cspace::interface::*;
 use sel4_task::{possible_switch_to, set_thread_state, tcb_t, ThreadState};
 use sel4_vspace::pptr_t;
+use unimock::unimock;
 
 /// The trait for IPC transfer, please see doc.md for more details
+#[unimock(api=TransferMock)]
 pub trait Transfer {
     /// Cancel the IPC of thread
     /// # Example

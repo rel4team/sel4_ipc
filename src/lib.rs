@@ -44,12 +44,34 @@ mod tests {
         println,
     };
 
+    use buddy_system_allocator::LockedHeap;
     use sel4_cspace::arch::cap_t;
     use sel4_cspace::interface::cte_t;
     use sel4_cspace::interface::mdb_node_t;
     use sel4_task::tcb_queue_t;
     use sel4_task::{tcb_t, thread_state_t, ThreadState};
     use sel4_vspace::pptr_t;
+    use unimock::matching;
+    use unimock::MockFn;
+    use unimock::Unimock;
+
+    #[global_allocator]
+    static HEAP_ALLOCATOR: LockedHeap<64> = LockedHeap::<64>::empty();
+
+    // #[alloc_error_handler]
+    // pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {
+    //     panic!("Heap allocation error, layout = {:?}", layout);
+    // }
+
+    static mut HEAP_SPACE: [u8; 2048] = [0; 2048];
+
+    pub fn init_heap() {
+        unsafe {
+            HEAP_ALLOCATOR
+                .lock()
+                .init(HEAP_SPACE.as_ptr() as usize, 2048);
+        }
+    }
 
     global_asm!(include_str!("entry.asm"));
 
@@ -555,10 +577,7 @@ mod tests {
                 valid_addr = valid_addr >> 4 << 4;
             }
             let ep = unsafe { &mut *(valid_addr as *mut endpoint_t) };
-            ep.set_queue(&tcb_queue_t{
-                head: 0,
-                tail: 0,
-            });
+            ep.set_queue(&tcb_queue_t { head: 0, tail: 0 });
             ep.set_state(EPState_Idle as usize);
 
             ep.send_ipc(mock_tcb, true, false, false, 0, false); // send
@@ -918,6 +937,26 @@ mod tests {
         println!("Test transfer_do_fault_transfer_VMFault_test passed!<<<<<<<<<<<<\n");
     }
 
+    #[test_case]
+    pub fn unimock_sample_test() {
+        println!(">>>>>>>>>>>> Entering unimock_sample_test...");
+
+        fn test_do_fault_reply_transfer(t: impl Transfer) -> bool {
+            t.do_fault_reply_transfer(&mut new_mock_tcb_with_state(
+                ThreadState::ThreadStateRunning,
+            ))
+        }
+        let clause = TransferMock::do_fault_reply_transfer
+            .each_call(matching!(_))
+            .returns(false);
+
+        let mock = Unimock::new(clause);
+
+        assert_eq!(false, test_do_fault_reply_transfer(mock));
+
+        println!("Test unimock_sample_test passed!<<<<<<<<<<<<\n");
+    }
+
     #[panic_handler]
     fn panic(info: &core::panic::PanicInfo) -> ! {
         println!("{}", info);
@@ -933,7 +972,7 @@ mod tests {
         println!("All Test Cases(count: {}) passed!", tests.len());
         shutdown();
     }
-    
+
     #[no_mangle]
     pub fn call_test_main() {
         #[cfg(target_arch = "riscv64")]
@@ -947,6 +986,7 @@ mod tests {
         }
         #[cfg(target_arch = "aarch64")]
         trap::init();
+        init_heap();
         crate::test_main();
     }
     #[no_mangle]

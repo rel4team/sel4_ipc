@@ -9,6 +9,7 @@ sel4_cspace = { git = "https://github.com/rel4team/sel4_cspace.git", branch = "f
 sel4_vspace = { git = "https://github.com/rel4team/sel4_vspace.git", branch = "feature/test-check" }
 sel4_task = { git = "https://github.com/rel4team/sel4_task.git", branch = "feature/test-check" }
 unimock = { version = "0.6.6", default-features = false, features = ["critical-section"] }
+buddy_system_allocator = "0.10.0"
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
